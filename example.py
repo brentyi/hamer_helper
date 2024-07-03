@@ -1,4 +1,5 @@
 """Example script for running HaMeR via the HamerHelper."""
+
 from pathlib import Path
 
 import imageio.v3 as iio
@@ -29,27 +30,21 @@ def main(
         # Run HaMeR.
         det_left, det_right = hamer_helper.look_for_hands(
             image=image,
-            focal_length=(1137.0 / 1280) * image.shape[1],
             # For most real-world applications, this should probably set to None.
             render_output_dir_for_testing=render_output_dir,
             render_output_prefix_for_testing=input_image.stem,
         )
 
-        # if det_left is not None:
-        #     rgb, depth, mask = hamer_helper.render_detection(
-        #         det_left, 0, 1280, 720, 1137.0
-        #     )
-        # if det_right is not None:
-        #     rgb, depth, mask = hamer_helper.render_detection(
-        #         det_right, 0, 1280, 720, 1137.0
-        #     )
-        # import matplotlib.pyplot as plt
-        #
-        # fig, axs = plt.subplots(1, 3)
-        # axs[0].imshow(rgb)
-        # axs[1].imshow(depth)
-        # axs[2].imshow(mask)
-        # plt.show()
+        h, w = image.shape[:2]
+
+        if det_left is not None:
+            rgb, depth, mask = hamer_helper.render_detection(det_left, 0, h, w)
+            iio.imwrite(render_output_dir / f"{input_image.name}_det_left.png", rgb)
+            breakpoint()
+        if det_right is not None:
+            rgb, depth, mask = hamer_helper.render_detection(det_right, 0, h, w)
+            iio.imwrite(render_output_dir / f"{input_image.name}_det_right.png", rgb)
+            breakpoint()
 
 
 if __name__ == "__main__":

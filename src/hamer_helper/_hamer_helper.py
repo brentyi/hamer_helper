@@ -8,8 +8,8 @@ from typing import Any, Generator, TypedDict
 import imageio.v3 as iio
 import numpy as np
 import torch
-import tyro
 from hamer.datasets.vitdet_dataset import DEFAULT_MEAN, DEFAULT_STD, ViTDetDataset
+from hamer.utils.mesh_renderer import create_raymond_lights
 from hamer.utils.renderer import Renderer, cam_crop_to_full
 from jaxtyping import Float, Int
 from torch import Tensor
@@ -131,10 +131,10 @@ class HamerHelper:
             with _stopwatch("Creating ViT pose model..."):
                 cpm = ViTPoseModel(device)
 
-            self.model = model
-            self.model_cfg = model_cfg
-            self.detector = detector
-            self.cpm = cpm
+            self._model = model
+            self._model_cfg = model_cfg
+            self._detector = detector
+            self._cpm = cpm
             self.device = device
 
             print("#" * 80)
@@ -147,10 +147,22 @@ class HamerHelper:
             print("#" * 80)
             print("#" * 80)
 
+    def get_default_focal_length(self, h: int, w: int) -> float:
+        """Get the default focal length for a given image size.
+
+        This is how the HaMeR demo script computes the focal length... I don't
+        have a clear sense of the significance. We could ask George.
+        """
+        return (
+            self._model_cfg.EXTRA.FOCAL_LENGTH
+            / self._model_cfg.MODEL.IMAGE_SIZE
+            * max(h, w)
+        )
+
     def look_for_hands(
         self,
         image: Float[np.ndarray, "height width 3"],
-        focal_length: float | None,
+        focal_length: float | None = None,
         rescale_factor: float = 2.0,
         render_output_dir_for_testing: Path | None = None,
         render_output_prefix_for_testing: str = "",
@@ -166,14 +178,14 @@ class HamerHelper:
         assert image.shape[-1] == 3
 
         # Detectron expects BGR image.
-        det_out = self.detector(image[:, :, ::-1])
+        det_out = self._detector(image[:, :, ::-1])
         det_instances = det_out["instances"]
         valid_idx = (det_instances.pred_classes == 0) & (det_instances.scores > 0.5)
         pred_bboxes = det_instances.pred_boxes.tensor[valid_idx].cpu().numpy()
         pred_scores = det_instances.scores[valid_idx].cpu().numpy()
 
         # Detect human keypoints for each person
-        vitposes_out = self.cpm.predict_pose(
+        vitposes_out = self._cpm.predict_pose(
             image,
             [np.concatenate([pred_bboxes, pred_scores[:, None]], axis=1)],
         )
@@ -262,7 +274,7 @@ class HamerHelper:
         right = np.stack(is_right)
 
         dataset = ViTDetDataset(
-            self.model_cfg,
+            self._model_cfg,
             # HaMeR expects BGR.
             image[:, :, ::-1],
             boxes,
@@ -281,7 +293,7 @@ class HamerHelper:
         for batch in dataloader:
             batch: Any = recursive_to(batch, self.device)
             with torch.no_grad():
-                out = self.model.forward(batch)
+                out = self._model.forward(batch)
 
             multiplier = 2 * batch["right"] - 1
             pred_cam = out["pred_cam"]
@@ -292,23 +304,24 @@ class HamerHelper:
             multiplier = 2 * batch["right"] - 1
 
             if focal_length is None:
-                scaled_focal_length = (
-                    self.model_cfg.EXTRA.FOCAL_LENGTH
-                    / self.model_cfg.MODEL.IMAGE_SIZE
-                    * img_size.max()
+                # All of the img_size rows should be the same. I think.
+                focal_length = float(
+                    self.get_default_focal_length(
+                        img_size[0, 0].item(), img_size[0, 1].item()
+                    )
                 )
-            else:
-                scaled_focal_length = focal_length
+            assert isinstance(focal_length, float)
+            scaled_focal_length = focal_length
 
             pred_cam_t_full = cam_crop_to_full(
                 pred_cam, box_center, box_size, img_size, scaled_focal_length
             )
             hamer_out = _RawHamerOutputs(
                 mano_faces_left=torch.from_numpy(
-                    self.model.mano.faces[:, [0, 2, 1]].astype(np.int64)
+                    self._model.mano.faces[:, [0, 2, 1]].astype(np.int64)
                 ).to(device=self.device),
                 mano_faces_right=torch.from_numpy(
-                    self.model.mano.faces.astype(np.int64)
+                    self._model.mano.faces.astype(np.int64)
                 ).to(device=self.device),
                 pred_cam=out["pred_cam"],
                 pred_mano_global_orient=out["pred_mano_params"]["global_orient"],
@@ -325,7 +338,7 @@ class HamerHelper:
 
             # Render the result.
             if render_output_dir_for_testing:
-                renderer = Renderer(self.model_cfg, faces=self.model.mano.faces)
+                renderer = Renderer(self._model_cfg, faces=self._model.mano.faces)
                 batch_size = batch["img"].shape[0]
                 for n in range(batch_size):
                     # Get filename from path img_path
@@ -393,7 +406,7 @@ class HamerHelper:
                 "mano_hand_pose": mano_hand_pose[is_right],
                 "mano_hand_betas": mano_hand_betas[is_right],
                 "mano_hand_global_orient": R_camera_hand[is_right],
-                "faces": self.model.mano.faces.copy(),
+                "faces": self._model.mano.faces.copy(),
             }
 
         detections_left_wrt_cam: HandOutputsWrtCamera | None
@@ -418,7 +431,7 @@ class HamerHelper:
                 "mano_hand_pose": flip_rotmats(mano_hand_pose[is_left]),
                 "mano_hand_betas": mano_hand_betas[is_left],
                 "mano_hand_global_orient": flip_rotmats(R_camera_hand[is_left]),
-                "faces": self.model.mano.faces[:, [0, 2, 1]].copy(),
+                "faces": self._model.mano.faces[:, [0, 2, 1]].copy(),
             }
         # end new brent stuff
         return detections_left_wrt_cam, detections_right_wrt_cam
@@ -427,27 +440,33 @@ class HamerHelper:
         self,
         output_dict: HandOutputsWrtCamera,
         hand_index: int,
-        w: int,
         h: int,
-        focal_length: float,
+        w: int,
+        focal_length: float | None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Render to a tuple of (RGB, depth, mask). For testing."""
         import pyrender
         import trimesh
 
+        if focal_length is None:
+            focal_length = self.get_default_focal_length(h, w)
+
         render_res = (h, w)
         renderer = pyrender.OffscreenRenderer(
             viewport_width=render_res[1], viewport_height=render_res[0], point_size=1.0
+        )
+        material = pyrender.MetallicRoughnessMaterial(
+            metallicFactor=0.0, alphaMode="OPAQUE", baseColorFactor=(1.0, 1.0, 0.9, 1.0)
         )
 
         vertices = output_dict["verts"][hand_index]
         faces = output_dict["faces"]
 
         mesh = trimesh.Trimesh(vertices.copy(), faces.copy())
-        mesh = pyrender.Mesh.from_trimesh(mesh)
+        mesh = pyrender.Mesh.from_trimesh(mesh, material=material)
 
         scene = pyrender.Scene(
-            bg_color=[*(1.0, 1.0, 1.0), 0.0], ambient_light=(0.3, 0.3, 0.3)
+            bg_color=[1.0, 1.0, 1.0, 0.0], ambient_light=(0.3, 0.3, 0.3)
         )
         scene.add(mesh, "mesh")
 
@@ -460,6 +479,10 @@ class HamerHelper:
             zfar=1e12,
             znear=0.001,
         )
+
+        light_nodes = create_raymond_lights()
+        for node in light_nodes:
+            scene.add_node(node)
 
         # Create camera node and add it to pyRender scene
         camera_pose = np.eye(4)
