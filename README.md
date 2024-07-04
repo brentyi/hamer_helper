@@ -17,7 +17,7 @@ For each image in the input directory, run HaMeR and composite the detections.
 
 ---
 
-Instructions:
+**Instructions:**
 
 1. Set up an environment with the original HaMeR repo: https://github.com/geopavlakos/hamer
 2. Make sure the HaMeR demo script works.
