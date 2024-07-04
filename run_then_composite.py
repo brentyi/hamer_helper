@@ -1,4 +1,5 @@
-"""Example script for running HaMeR via the HamerHelper."""
+"""Example script for running HaMeR. For each image in some directory, detect
+hands and render them."""
 
 from pathlib import Path
 
@@ -11,12 +12,82 @@ from scipy.ndimage import binary_dilation
 from hamer_helper import HamerHelper, HandOutputsWrtCamera
 
 
+def main(
+    input_dir: Path,
+    output_dir: Path,
+    search_ext: tuple[str, ...] = (".jpg", "jpeg", "png"),
+) -> None:
+    """For each image in the input directory, run HaMeR and composite the detections.
+
+    Args:
+        input_dir: The directory to search for images.
+        output_dir: The directory to write the composited images.
+        search_ext: Image extensions to search for in the input directory.
+    """
+    # Find images.
+    image_paths = tuple(
+        filter(
+            lambda p: not p.is_dir() and p.suffix.lower() in search_ext,
+            input_dir.glob("**/*"),
+        )
+    )
+    print(f"Found {len(image_paths)} images!")
+
+    # Set up HaMeR.
+    # This should magically work as long as the HaMeR repo is set up.
+    hamer_helper = HamerHelper()
+
+    for image_path in image_paths:
+        # Read an image.
+        image = iio.imread(image_path)
+
+        # RGB => RGBA.
+        if image.shape[-1] == 4:
+            image = image / 255.0
+            image = image[:, :, :3] * image[:, :, 3:4] + 1.0 * (1.0 - image[:, :, 3:4])
+            image = (image * 255).astype(np.uint8)
+
+        # Get HaMeR detections as dictionaries.
+        det_left, det_right = hamer_helper.look_for_hands(image)
+
+        # Render detections on top of image.
+        composited = image
+        composited = composite_detections(
+            hamer_helper, composited, det_left, border_color=(255, 100, 100)
+        )
+        composited = composite_detections(
+            hamer_helper, composited, det_right, border_color=(100, 100, 255)
+        )
+        composited = put_text(
+            composited,
+            "L detections: "
+            + ("0" if det_left is None else str(det_left["verts"].shape[0])),
+            0,
+            color=(255, 100, 100),
+            font_scale=10.0 / 2880.0 * image.shape[0],
+        )
+        composited = put_text(
+            composited,
+            "R detections: "
+            + ("0" if det_right is None else str(det_right["verts"].shape[0])),
+            1,
+            color=(100, 100, 255),
+            font_scale=10.0 / 2880.0 * image.shape[0],
+        )
+
+        # Write out the input image next to the composited image.
+        output_path = output_dir / image_path.absolute().relative_to(input_dir)
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+        iio.imwrite(output_path, np.concatenate([image, composited], axis=1))
+
+
 def composite_detections(
     helper: HamerHelper,
     image: np.ndarray,
     detections: HandOutputsWrtCamera | None,
     border_color: tuple[int, int, int],
 ) -> np.ndarray:
+    """Render some hand detections on top of an image. Returns an updated image."""
     if detections is None:
         return image
 
@@ -47,6 +118,7 @@ def put_text(
     color: tuple[int, int, int],
     font_scale: float,
 ) -> np.ndarray:
+    """Put some text on the top-left corner of an image."""
     image = image.copy()
     font = cv2.FONT_HERSHEY_PLAIN  # type: ignore
     cv2.putText(  # type: ignore
@@ -70,58 +142,6 @@ def put_text(
         lineType=cv2.LINE_AA,  # type: ignore
     )
     return image
-
-
-def main(input_dir: Path, output_dir: Path, ext: str = "jpg") -> None:
-    # Set up HaMeR.
-    # This should magically work as long as the HaMeR repo is set up.
-    hamer_helper = HamerHelper()
-
-    for input_path in input_dir.glob(f"**/*.{ext}"):
-        if input_path.is_dir():
-            continue
-
-        # Read an image.
-        image = iio.imread(input_path)
-
-        # RGB => RGBA.
-        if image.shape[-1] == 4:
-            image = image / 255.0
-            image = image[:, :, :3] * image[:, :, 3:4] + 1.0 * (1.0 - image[:, :, 3:4])
-            image = (image * 255).astype(np.uint8)
-
-        # Run HaMeR.
-        det_left, det_right = hamer_helper.look_for_hands(image)
-
-        composited = image
-        composited = composite_detections(
-            hamer_helper, composited, det_left, border_color=(255, 100, 100)
-        )
-        composited = composite_detections(
-            hamer_helper, composited, det_right, border_color=(100, 100, 255)
-        )
-
-        composited = put_text(
-            composited,
-            "L detections: "
-            + ("0" if det_left is None else str(det_left["verts"].shape[0])),
-            0,
-            color=(255, 100, 100),
-            font_scale=10.0 / 2880.0 * image.shape[0],
-        )
-        composited = put_text(
-            composited,
-            "R detections: "
-            + ("0" if det_right is None else str(det_right["verts"].shape[0])),
-            1,
-            color=(100, 100, 255),
-            font_scale=10.0 / 2880.0 * image.shape[0],
-        )
-
-        output_path = output_dir / input_path.absolute().relative_to(input_dir)
-        output_path.parent.mkdir(exist_ok=True, parents=True)
-
-        iio.imwrite(output_path, np.concatenate([image, composited], axis=1))
 
 
 if __name__ == "__main__":
