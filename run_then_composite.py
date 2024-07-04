@@ -45,7 +45,7 @@ def put_text(
     text: str,
     line_number: int,
     color: tuple[int, int, int],
-    font_scale: float = 10.0,
+    font_scale: float,
 ) -> np.ndarray:
     image = image.copy()
     font = cv2.FONT_HERSHEY_PLAIN  # type: ignore
@@ -56,7 +56,7 @@ def put_text(
         fontFace=font,
         fontScale=font_scale,
         color=(0, 0, 0),
-        thickness=int(font_scale),
+        thickness=max(int(font_scale), 1),
         lineType=cv2.LINE_AA,  # type: ignore
     )
     cv2.putText(  # type: ignore
@@ -66,7 +66,7 @@ def put_text(
         fontFace=font,
         fontScale=font_scale,
         color=color,
-        thickness=int(font_scale),
+        thickness=max(int(font_scale), 1),
         lineType=cv2.LINE_AA,  # type: ignore
     )
     return image
@@ -78,6 +78,9 @@ def main(input_dir: Path, output_dir: Path, ext: str = "jpg") -> None:
     hamer_helper = HamerHelper()
 
     for input_path in input_dir.glob(f"**/*.{ext}"):
+        if input_path.is_dir():
+            continue
+
         # Read an image.
         image = iio.imread(input_path)
 
@@ -104,6 +107,7 @@ def main(input_dir: Path, output_dir: Path, ext: str = "jpg") -> None:
             + ("0" if det_left is None else str(det_left["verts"].shape[0])),
             0,
             color=(255, 100, 100),
+            font_scale=10.0 / 2880.0 * image.shape[0],
         )
         composited = put_text(
             composited,
@@ -111,6 +115,7 @@ def main(input_dir: Path, output_dir: Path, ext: str = "jpg") -> None:
             + ("0" if det_right is None else str(det_right["verts"].shape[0])),
             1,
             color=(100, 100, 255),
+            font_scale=10.0 / 2880.0 * image.shape[0],
         )
 
         output_path = output_dir / input_path.absolute().relative_to(input_dir)
