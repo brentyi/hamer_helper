@@ -15,7 +15,7 @@ from hamer_helper import HamerHelper, HandOutputsWrtCamera
 def main(
     input_dir: Path,
     output_dir: Path,
-    search_ext: tuple[str, ...] = (".jpg", "jpeg", "png"),
+    search_ext: tuple[str, ...] = (".jpg", ".jpeg", ".png"),
 ) -> None:
     """For each image in the input directory, run HaMeR and composite the detections.
 

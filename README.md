@@ -6,13 +6,13 @@ usage: hamer_example.py [-h] --input-dir PATH --output-dir PATH [--search-ext [S
 
 For each image in the input directory, run HaMeR and composite the detections.
 
-╭─ options ───────────────────────────────────────────────────────────────────────────────────────────────╮
-│ -h, --help              show this help message and exit                                                 │
-│ --input-dir PATH        The directory to search for images. (required)                                  │
-│ --output-dir PATH       The directory to write the composited images. (required)                        │
-│ --search-ext [STR [STR ...]]                                                                            │
-│                         Image extensions to search for in the input directory. (default: .jpg jpeg png) │
-╰─────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ options ─────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ -h, --help              show this help message and exit                                                   │
+│ --input-dir PATH        The directory to search for images. (required)                                    │
+│ --output-dir PATH       The directory to write the composited images. (required)                          │
+│ --search-ext [STR [STR ...]]                                                                              │
+│                         Image extensions to search for in the input directory. (default: .jpg .jpeg .png) │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
