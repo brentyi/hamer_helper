@@ -1,5 +1,3 @@
-# hamer_helper
-
 ![image](https://github.com/user-attachments/assets/403f200d-60fd-4bd9-a7d3-d51cdcd35c87)
 
 ```
