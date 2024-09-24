@@ -7,9 +7,8 @@ import cv2
 import imageio.v3 as iio
 import numpy as np
 import tyro
-from scipy.ndimage import binary_dilation
 
-from hamer_helper import HamerHelper, HandOutputsWrtCamera
+from hamer_helper import HamerHelper
 
 
 def main(
@@ -41,6 +40,10 @@ def main(
         # Read an image.
         image = iio.imread(image_path)
 
+        # Convert grayscale to RGB.
+        if len(image.shape) == 2:
+            image = np.stack([image] * 3, axis=-1)
+
         # RGB => RGBA.
         if image.shape[-1] == 4:
             image = image / 255.0
@@ -52,11 +55,11 @@ def main(
 
         # Render detections on top of image.
         composited = image
-        composited = composite_detections(
-            hamer_helper, composited, det_left, border_color=(255, 100, 100)
+        composited = hamer_helper.composite_detections(
+            composited, det_left, border_color=(255, 100, 100)
         )
-        composited = composite_detections(
-            hamer_helper, composited, det_right, border_color=(100, 100, 255)
+        composited = hamer_helper.composite_detections(
+            composited, det_right, border_color=(100, 100, 255)
         )
         composited = put_text(
             composited,
@@ -79,36 +82,6 @@ def main(
         output_path = output_dir / image_path.absolute().relative_to(input_dir)
         output_path.parent.mkdir(exist_ok=True, parents=True)
         iio.imwrite(output_path, np.concatenate([image, composited], axis=1))
-
-
-def composite_detections(
-    helper: HamerHelper,
-    image: np.ndarray,
-    detections: HandOutputsWrtCamera | None,
-    border_color: tuple[int, int, int],
-) -> np.ndarray:
-    """Render some hand detections on top of an image. Returns an updated image."""
-    if detections is None:
-        return image
-
-    h, w = image.shape[:2]
-
-    for index in range(detections["verts"].shape[0]):
-        print(index)
-        render_rgb, _, render_mask = helper.render_detection(
-            detections, hand_index=0, h=h, w=w, focal_length=None
-        )
-        border_width = 15
-        image = np.where(
-            binary_dilation(
-                render_mask, np.ones((border_width, border_width), dtype=bool)
-            )[:, :, None],
-            np.zeros_like(render_rgb) + np.array(border_color, dtype=np.uint8),
-            image,
-        )
-        image = np.where(render_mask[:, :, None], render_rgb, image)
-
-    return image
 
 
 def put_text(

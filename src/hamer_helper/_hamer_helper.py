@@ -3,15 +3,17 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generator, TypedDict
+from typing import Any, Generator, Literal, TypedDict
 
 import imageio.v3 as iio
 import numpy as np
 import torch
+import torch.utils.data
 from hamer.datasets.vitdet_dataset import DEFAULT_MEAN, DEFAULT_STD, ViTDetDataset
 from hamer.utils.mesh_renderer import create_raymond_lights
 from hamer.utils.renderer import Renderer, cam_crop_to_full
 from jaxtyping import Float, Int
+from scipy.ndimage import binary_dilation
 from torch import Tensor
 
 
@@ -310,6 +312,8 @@ class HamerHelper:
                         img_size[0, 0].item(), img_size[0, 1].item()
                     )
                 )
+            if isinstance(focal_length, int):
+                focal_length = float(focal_length)
             assert isinstance(focal_length, float)
             scaled_focal_length = focal_length
 
@@ -406,7 +410,7 @@ class HamerHelper:
                 "mano_hand_pose": mano_hand_pose[is_right],
                 "mano_hand_betas": mano_hand_betas[is_right],
                 "mano_hand_global_orient": R_camera_hand[is_right],
-                "faces": self._model.mano.faces.copy(),
+                "faces": self.get_mano_faces("right"),
             }
 
         detections_left_wrt_cam: HandOutputsWrtCamera | None
@@ -431,10 +435,16 @@ class HamerHelper:
                 "mano_hand_pose": flip_rotmats(mano_hand_pose[is_left]),
                 "mano_hand_betas": mano_hand_betas[is_left],
                 "mano_hand_global_orient": flip_rotmats(R_camera_hand[is_left]),
-                "faces": self._model.mano.faces[:, [0, 2, 1]].copy(),
+                "faces": self.get_mano_faces("left"),
             }
         # end new brent stuff
         return detections_left_wrt_cam, detections_right_wrt_cam
+
+    def get_mano_faces(self, side: Literal["left", "right"]) -> np.ndarray:
+        if side == "left":
+            return self._model.mano.faces[:, [0, 2, 1]].copy()
+        else:
+            return self._model.mano.faces.copy()
 
     def render_detection(
         self,
@@ -442,7 +452,7 @@ class HamerHelper:
         hand_index: int,
         h: int,
         w: int,
-        focal_length: float | None,
+        focal_length: float | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Render to a tuple of (RGB, depth, mask). For testing."""
         import pyrender
@@ -493,3 +503,33 @@ class HamerHelper:
         color, rend_depth = renderer.render(scene, flags=pyrender.RenderFlags.RGBA)  # type: ignore
         mask = color[..., -1] > 0
         return color[..., :3], rend_depth, mask
+
+    def composite_detections(
+        self,
+        image: np.ndarray,
+        detections: HandOutputsWrtCamera | None,
+        border_color: tuple[int, int, int],
+        focal_length: float | None = None,
+    ) -> np.ndarray:
+        """Render some hand detections on top of an image. Returns an updated image."""
+        if detections is None:
+            return image
+
+        h, w = image.shape[:2]
+
+        for index in range(detections["verts"].shape[0]):
+            print(index)
+            render_rgb, _, render_mask = self.render_detection(
+                detections, hand_index=index, h=h, w=w, focal_length=focal_length
+            )
+            border_width = 15
+            image = np.where(
+                binary_dilation(
+                    render_mask, np.ones((border_width, border_width), dtype=bool)
+                )[:, :, None],
+                np.zeros_like(render_rgb) + np.array(border_color, dtype=np.uint8),
+                image,
+            )
+            image = np.where(render_mask[:, :, None], render_rgb, image)
+
+        return image
