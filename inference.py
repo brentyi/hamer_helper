@@ -79,7 +79,7 @@ def main(
         )
 
         # Write out the input image next to the composited image.
-        output_path = output_dir / image_path.absolute().relative_to(input_dir)
+        output_path = output_dir / image_path.resolve().relative_to(input_dir.resolve())
         output_path.parent.mkdir(exist_ok=True, parents=True)
         iio.imwrite(output_path, np.concatenate([image, composited], axis=1))
 
