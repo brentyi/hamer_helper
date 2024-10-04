@@ -163,7 +163,7 @@ class HamerHelper:
 
     def look_for_hands(
         self,
-        image: Float[np.ndarray, "height width 3"],
+        image: Int[np.ndarray, "height width 3"],
         focal_length: float | None = None,
         rescale_factor: float = 2.0,
         render_output_dir_for_testing: Path | None = None,
