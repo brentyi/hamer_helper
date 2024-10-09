@@ -163,7 +163,7 @@ class HamerHelper:
 
     def look_for_hands(
         self,
-        image: Float[np.ndarray, "height width 3"],
+        image: Int[np.ndarray, "height width 3"],
         focal_length: float | None = None,
         rescale_factor: float = 2.0,
         render_output_dir_for_testing: Path | None = None,
@@ -172,12 +172,15 @@ class HamerHelper:
         """Look for hands.
 
         Arguments:
-            image: Image to look for hands in.
+            image: Image to look for hands in. Expects uint8, in range [0, 255].
             focal_length: Focal length of camera, used for 3D coordinates.
             rescale_factor: Rescale factor for running ViT detector. I think 2 is fine, probably.
             render_output_dir: Directory to render out detections to. Mostly this is used for testing. Doesn't do any rendering
         """
         assert image.shape[-1] == 3
+
+        # image must be `np.uint8`, and in range [0, 255].
+        assert image.dtype == np.uint8
 
         # Detectron expects BGR image.
         det_out = self._detector(image[:, :, ::-1])
