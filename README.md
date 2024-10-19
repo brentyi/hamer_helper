@@ -10,7 +10,7 @@ We provide a modular API (`HamerHelper()`) and an example script (`inference.py`
 
 1. Set up an environment with the original HaMeR repo: https://github.com/geopavlakos/hamer
 2. Make sure the HaMeR demo script works.
-3. `pip install git+ssh://git@github.com/brentyi/hamer_helper.git`
+3. `pip install git+https://github.com/brentyi/hamer_helper.git`
 
 ### Example script
 
